@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Story Map - Jardines y Espacios Públicos de Rosario</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+<style>
+  :root{
+    --govuk-blue:#1d70b8;
+    --govuk-dark-blue:#003078;
+    --govuk-black:#0b0c0c;
+    --govuk-white:#ffffff;
+    --govuk-grey:#f3f2f1;
+    --govuk-mid-grey:#b1b4b6;
+    --govuk-green:#00703c;
+    --govuk-yellow:#ffdd00;
+    --govuk-red:#d4351c;
+    --font: "GDS Transport","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;font-family:var(--font);background:#fff;color:var(--govuk-black);overflow:hidden;}
+
+  header.topbar{
+    height:48px;
+    background:var(--govuk-black);
+    color:#fff;
+    display:flex;
+    align-items:center;
+    padding:0 16px;
+    font-weight:700;
+    font-size:16px;
+  }
+  header.topbar .crown{
+    width:24px;height:24px;margin-right:10px;
+    background:var(--govuk-yellow);border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#000;font-size:14px;font-weight:900;
+  }
+
+  #storymap{
+    position:relative;
+    height:calc(100vh - 48px);
+    width:100vw;
+  }
+
+  #map{
+    position:absolute;
+    inset:0;
+    height:100%;
+    width:100%;
+  }
+
+  /* Panel: oculto por defecto, slide-in desde derecha */
+  #panel{
+    position:absolute;
+    top:16px;
+    right:0;
+    bottom:16px;
+    width:400px;
+    max-width:100vw;
+    background:rgba(255,255,255,0.92);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border-left:4px solid var(--govuk-blue);
+    box-shadow:-6px 0 28px rgba(0,0,0,0.22);
+    display:flex;
+    flex-direction:column;
+    z-index:600;
+    transform:translateX(110%);
+    transition:transform .35s cubic-bezier(.4,0,.2,1);
+    will-change:transform;
+    border-radius:0 0 0 0;
+  }
+  #panel.open{
+    transform:translateX(0);
+  }
+
+  /* Botón cerrar dentro del panel */
+  #btn-close{
+    position:absolute;
+    top:10px;
+    right:10px;
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    border:none;
+    background:rgba(11,12,12,0.45);
+    backdrop-filter:blur(4px);
+    color:#fff;
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:700;
+    transition:background .15s;
+  }
+  #btn-close:hover{ background:rgba(212,53,28,0.85); }
+
+  #slide-content{
+    flex:1;
+    overflow-y:auto;
+    padding:16px 20px;
+  }
+
+  .slide-counter{
+    font-size:12px;
+    font-weight:700;
+    color:#505a5f;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    margin-bottom:8px;
+  }
+  .slide-title{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 10px 0;
+    border-bottom:2px solid var(--govuk-black);
+    padding-bottom:10px;
+  }
+  .slide-tag{
+    display:inline-block;
+    background:var(--govuk-green);
+    color:#fff;
+    font-size:12px;
+    font-weight:700;
+    text-transform:uppercase;
+    padding:3px 8px;
+    margin:8px 0 14px 0;
+  }
+  .slide-photo-wrap{
+    width:100%;
+    border:1px solid var(--govuk-mid-grey);
+    margin-bottom:14px;
+    overflow:hidden;
+  }
+  .slide-photo-wrap img{
+    width:100%;height:auto;max-height:200px;object-fit:cover;display:block;
+  }
+  .slide-photo-caption{
+    font-size:11px;color:#505a5f;background:var(--govuk-grey);
+    padding:4px 8px;border-top:1px solid var(--govuk-mid-grey);
+  }
+  .field-row{
+    display:flex;
+    border-bottom:1px solid var(--govuk-mid-grey);
+    padding:8px 0;
+    font-size:14px;
+  }
+  .field-label{ flex:0 0 100px; font-weight:700; color:#505a5f; }
+  .field-value{ flex:1; word-break:break-word; }
+  .field-value a{ color:var(--govuk-blue); }
+
+  /* Flechas difusas flotando sobre la ficha, centradas verticalmente */
+  .arrow-btn{
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.5);
+    background:rgba(11,12,12,0.4);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    color:#fff;
+    font-size:20px;
+    line-height:1;
+    cursor:pointer;
+    font-family:Arial, sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:background .15s ease, transform .15s ease;
+    z-index:650;
+  }
+  .arrow-btn#btnPrev{ left:6px; }
+  .arrow-btn#btnNext{ right:6px; }
+  .arrow-btn:hover:not(:disabled){ background:rgba(29,112,184,0.7); transform:translateY(-50%) scale(1.1); }
+  .arrow-btn:active:not(:disabled){ background:rgba(0,48,120,0.8); }
+  .arrow-btn:disabled{ background:rgba(177,180,182,0.3); cursor:not-allowed; opacity:.4; }
+
+  .nav-center{
+    flex-shrink:0;
+    text-align:center;
+    padding:10px 56px 14px 56px;
+    border-top:1px solid rgba(177,180,182,0.4);
+  }
+  #slide-counter-display{
+    font-size:14px;
+    font-weight:700;
+    color:var(--govuk-black);
+  }
+  #slide-name-display{
+    font-size:11px;
+    color:#505a5f;
+    margin-top:2px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  /* Overlay semitransparente que cierra el panel al clicar fuera */
+  #overlay{
+    display:none;
+    position:absolute;
+    inset:0;
+    z-index:590;
+    background:transparent;
+  }
+  #overlay.active{ display:block; }
+
+  .govuk-pin{ width:30px;height:40px;position:relative;display:flex;align-items:center;justify-content:center; }
+  .govuk-pin svg{ width:30px;height:40px;display:block; }
+
+  .leaflet-popup-content-wrapper{ border-radius:0; border-left:4px solid var(--govuk-blue); }
+  .leaflet-popup-content{ font-family:var(--font); font-size:13px; }
+
+  .status-msg{ padding:16px;font-size:15px;color:#505a5f; }
+  .status-msg.error{ color:var(--govuk-red); font-weight:700; }
+
+  /* Mobile: panel cubre todo el mapa desde abajo */
+  @media (max-width: 768px){
+    #panel{
+      top:auto;
+      left:0;
+      right:0;
+      bottom:0;
+      width:100%;
+      max-width:100%;
+      height:80vh;
+      border-left:none;
+      border-top:4px solid var(--govuk-blue);
+      border-radius:16px 16px 0 0;
+      transform:translateY(110%);
+    }
+    #panel.open{ transform:translateY(0); }
+    #slide-content{ padding:14px 16px; }
+    .slide-title{ font-size:19px; }
+    .arrow-btn{ width:38px; height:38px; font-size:18px; }
+    .arrow-btn#btnPrev{ left:6px; }
+    .arrow-btn#btnNext{ right:6px; }
+    .nav-center{ padding:8px 16px 12px; }
+    #btn-close{ top:10px; right:10px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar"><span class="crown">i</span>Story Map · Jardines y Espacios Públicos de Rosario</header>
+
+<div id="storymap">
+  <div id="map"></div>
+  <div id="overlay"></div>
+  <div id="panel">
+    <button id="btn-close" aria-label="Cerrar">&#10005;</button>
+    <button class="arrow-btn" id="btnPrev" aria-label="Lugar anterior">&#10094;</button>
+    <button class="arrow-btn" id="btnNext" aria-label="Lugar siguiente">&#10095;</button>
+    <div id="slide-content"></div>
+    <div class="nav-center" id="nav-controls" style="display:none;">
+      <div id="slide-counter-display">1 / 1</div>
+      <div id="slide-name-display"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA_URL = "https://ws.rosario.gob.ar/ubicaciones/public/geojson/lugaresConEtiquetas?termino=all&extendido=true&incluyeEtiquetas=false&habilitaBusquedaPorId=false&titular=0&etiquetas=jardines,p%C3%BAblicos&operadorEtiquetas=AND";
+
+proj4.defs("EPSG:22185", "+proj=tmerc +lat_0=-90 +lon_0=-60 +k=1 +x_0=5500000 +y_0=0 +ellps=intl +towgs84=-148,136,90,0,0,0,0 +units=m +no_defs");
+function toLatLon(x, y){
+  const [lon, lat] = proj4("EPSG:22185", "WGS84", [x, y]);
+  return [lat, lon];
+}
+
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function slugify(str){
+  return String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
+// Fotos de ejemplo de fachadas de jardines de infantes (Unsplash, uso libre)
+const EXAMPLE_PHOTOS = [
+  "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1509062522246-3755977927d7?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1562774053-701939374585?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1564981797816-1043664bf78d?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1567168544230-f4c9ce2df6a8?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1544717305-2782549b5136?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1519452575417-564c1401ecc0?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1535982330050-f1c2fb79ff78?w=480&h=300&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1497366216548-37526070297c?w=480&h=300&fit=crop&auto=format",
+];
+
+function exampleImageUrl(index){
+  return EXAMPLE_PHOTOS[index % EXAMPLE_PHOTOS.length];
+}
+function findPhotoUrl(props){
+  const candidateKeys = ['foto','fotos','imagen','imagenes','imagenUrl','imagen_url','foto_url','image','images','photo','photos','urlImagen','url_imagen'];
+  for(const key of candidateKeys){
+    if(props[key] === undefined || props[key] === null) continue;
+    let val = props[key];
+    if(Array.isArray(val) && val.length > 0) val = val[0];
+    if(typeof val === 'object' && val !== null) val = val.url || val.src || val.path || null;
+    if(typeof val === 'string' && val.trim() !== ''){
+      if(/^https?:\/\//i.test(val)) return val;
+      if(val.startsWith('/')) return 'https://ws.rosario.gob.ar' + val;
+      return val;
+    }
+  }
+  return null;
+}
+function buildFieldRows(props){
+  const skip = ['nombre','descripcion','direccion'];
+  let rows = '';
+  for(const key in props){
+    if(skip.includes(key)) continue;
+    const val = props[key];
+    if(val === null || val === undefined || val === '') continue;
+    if(typeof val === 'object') continue;
+    let label = key.replace(/_/g,' ');
+    label = label.charAt(0).toUpperCase() + label.slice(1);
+    let value = escapeHtml(val);
+    if(/^https?:\/\//i.test(String(val))) value = `<a href="${value}" target="_blank" rel="noopener">${value}</a>`;
+    rows += `<div class="field-row"><div class="field-label">${escapeHtml(label)}</div><div class="field-value">${value}</div></div>`;
+  }
+  return rows;
+}
+
+function govukPinIcon(color){
+  const svg = `
+  <svg viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 11 16 26 16 26s16-15 16-26C32 7.2 24.8 0 16 0z" fill="${color}" stroke="#0b0c0c" stroke-width="1.5"/>
+    <circle cx="16" cy="16" r="6.5" fill="#ffffff" stroke="#0b0c0c" stroke-width="1.2"/>
+  </svg>`;
+  return L.divIcon({
+    html: `<div class="govuk-pin">${svg}</div>`,
+    className:'', iconSize:[30,40], iconAnchor:[15,40], popupAnchor:[0,-36]
+  });
+}
+const defaultIcon = govukPinIcon('#1d70b8');
+const activeIcon = govukPinIcon('#d4351c');
+
+// ---- Extensión nativa de Leaflet: StoryMap controller ----
+L.StoryMap = L.Evented.extend({
+  initialize: function(map, opts){
+    this._map = map;
+    this._slides = [];
+    this._markers = [];
+    this._current = -1;
+    this._line = null;
+    this._opts = Object.assign({ flyDuration: 1.2, zoom: 16 }, opts);
+  },
+  setSlides: function(slides){
+    this._slides = slides;
+    this._markers = slides.map((s, i) => {
+      const m = L.marker(s.latlng, { icon: defaultIcon }).addTo(this._map);
+      m.on('click', () => this.goTo(i));
+      m.bindTooltip(String(i+1), { permanent:false, direction:'top' });
+      return m;
+    });
+    // Línea de recorrido conectando los puntos en orden, estilo "journey"
+    const coords = slides.map(s => s.latlng);
+    if(coords.length > 1){
+      this._line = L.polyline(coords, { color:'#1d70b8', weight:3, dashArray:'6,8', opacity:.7 }).addTo(this._map);
+    }
+    this.fire('slidesset', { count: slides.length });
+  },
+  goTo: function(index){
+    if(index < 0 || index >= this._slides.length) return;
+    if(this._current >= 0) this._markers[this._current].setIcon(defaultIcon);
+    this._current = index;
+    const slide = this._slides[index];
+    this._markers[index].setIcon(activeIcon);
+    this._map.flyTo(slide.latlng, this._opts.zoom, { duration: this._opts.flyDuration });
+    this.fire('change', { index, slide });
+  },
+  next: function(){ this.goTo(this._current + 1); },
+  prev: function(){ this.goTo(this._current - 1); },
+  current: function(){ return this._current; },
+  count: function(){ return this._slides.length; }
+});
+L.storyMap = function(map, opts){ return new L.StoryMap(map, opts); };
+// ------------------------------------------------------------
+
+const map = L.map('map', { zoomControl:true, scrollWheelZoom:true }).setView([-32.9468,-60.6393], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'&copy; OpenStreetMap contributors', maxZoom:19
+}).addTo(map);
+
+const story = L.storyMap(map, { flyDuration: 1.2, zoom: 17 });
+
+function renderSlide(index, slide){
+  const props = slide.props;
+  const nombre = props.nombre || props.NOMBRE || props.titulo || props.name || props.NAME || 'Sin nombre';
+  const direccion = props.direccion || props.DIRECCION || '';
+  const descripcion = props.descripcion || props.DESCRIPCION || '';
+  const fotoUrl = findPhotoUrl(props);
+  const isReal = !!fotoUrl;
+  const displayUrl = fotoUrl || exampleImageUrl(index);
+
+  let html = `
+    <div class="slide-counter">Parada ${index+1} de ${story.count()}</div>
+    <h2 class="slide-title">${escapeHtml(nombre)}</h2>
+    <div class="slide-photo-wrap">
+      <img src="${escapeHtml(displayUrl)}" alt="${escapeHtml(nombre)}" onerror="this.closest('.slide-photo-wrap').remove();" />
+      ${!isReal ? '<div class="slide-photo-caption">Imagen de ejemplo (ilustrativa, no es una foto real del lugar)</div>' : ''}
+    </div>
+    <span class="slide-tag">Espacio público / Jardín</span>
+  `;
+  if(direccion) html += `<div class="field-row"><div class="field-label">Dirección</div><div class="field-value">${escapeHtml(direccion)}</div></div>`;
+  if(descripcion) html += `<div class="field-row"><div class="field-label">Descripción</div><div class="field-value">${escapeHtml(descripcion)}</div></div>`;
+  html += buildFieldRows(props);
+
+  document.getElementById('slide-content').innerHTML = html;
+  document.getElementById('slide-counter-display').textContent = (index+1) + ' / ' + story.count();
+  document.getElementById('slide-name-display').textContent = nombre;
+  document.getElementById('btnPrev').disabled = (index === 0);
+  document.getElementById('btnNext').disabled = (index === story.count()-1);
+}
+
+story.on('change', (e) => renderSlide(e.index, e.slide));
+
+const panel   = document.getElementById('panel');
+const overlay = document.getElementById('overlay');
+
+function openPanel(){
+  panel.classList.add('open');
+  overlay.classList.add('active');
+}
+function closePanel(){
+  panel.classList.remove('open');
+  overlay.classList.remove('active');
+  if(story.current() >= 0) story._markers[story.current()].setIcon(defaultIcon);
+}
+
+document.getElementById('btn-close').addEventListener('click', (e) => { e.stopPropagation(); closePanel(); });
+overlay.addEventListener('click', closePanel);
+document.getElementById('btnPrev').addEventListener('click', (e) => { e.stopPropagation(); story.prev(); });
+document.getElementById('btnNext').addEventListener('click', (e) => { e.stopPropagation(); story.next(); });
+
+// Cerrar con Escape
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closePanel(); });
+
+// Extender StoryMap para abrir panel al cambiar
+story.on('change', () => openPanel());
+
+async function fetchWithFallback(url){
+  const attempts = [];
+  try{ const res = await fetch(url); if(res.ok) return await res.json(); attempts.push('Directo: HTTP '+res.status); }catch(e){ attempts.push('Directo: '+e.message); }
+  try{ const res = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(url)); if(res.ok) return await res.json(); attempts.push('allorigins: HTTP '+res.status); }catch(e){ attempts.push('allorigins: '+e.message); }
+  try{ const res = await fetch('https://corsproxy.io/?url='+encodeURIComponent(url)); if(res.ok) return await res.json(); attempts.push('corsproxy.io: HTTP '+res.status); }catch(e){ attempts.push('corsproxy.io: '+e.message); }
+  try{
+    const res = await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url));
+    if(res.ok){ const wrapped = await res.json(); if(wrapped && wrapped.contents) return JSON.parse(wrapped.contents); }
+    attempts.push('allorigins/get: HTTP '+res.status);
+  }catch(e){ attempts.push('allorigins/get: '+e.message); }
+  throw new Error(attempts.join(' | '));
+}
+
+async function init(){
+  try{
+    const geojson = await fetchWithFallback(DATA_URL);
+    const features = geojson.features || [];
+    if(features.length === 0){
+      document.getElementById('initialStatus').textContent = 'Sin resultados.';
+      return;
+    }
+
+    const slides = [];
+    features.forEach(f => {
+      if(!f.geometry || f.geometry.type !== 'Point') return;
+      const [x, y] = f.geometry.coordinates;
+      let lat, lon;
+      if(Math.abs(x) > 180 || Math.abs(y) > 180){ [lat, lon] = toLatLon(x, y); }
+      else { lon = x; lat = y; }
+      slides.push({ latlng: [lat, lon], props: f.properties || {} });
+    });
+
+    story.setSlides(slides);
+
+    document.getElementById('nav-controls').style.display = 'block';
+
+    const bounds = slides.map(s => s.latlng);
+    map.fitBounds(bounds, { padding:[30,30] });
+
+    // No abrimos el panel automáticamente; espera clic en marcador
+
+  }catch(err){
+    console.error(err);
+    document.getElementById('slide-content').innerHTML =
+      `<div class="status-msg error">Error al cargar los datos: ${escapeHtml(err.message)}</div>`;
+    openPanel();
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
